@@ -19,312 +19,65 @@
 
 Scripts สำหรับดึงข้อมูลจาก External APIs และบันทึกเป็น CSV
 
-### 1. fetch-daily-weather.ts
+The flight data ingestion process consists of **three main steps**:
 
-**Purpose:** ดึงข้อมูลสภาพอากาศรายวันจาก Open-Meteo Historical API และ OpenWeatherMap Forecast API
+1.  **Fetch flight data from Google using SerpAPI**
+2.  **Convert the fetched data into CSV format**
+3.  **Import the CSV data into the database**
 
-**Location:** `backend/src/scripts/fetch-daily-weather.ts`
+Each step is intentionally separated to keep the pipeline easy to debug, maintain, and extend.
 
-**API Used:** 
-- Open-Meteo Archive API (ฟรี, ไม่ต้องใช้ API key) - สำหรับข้อมูลอดีต (2020-01-01 ถึง 2026-01-06)
-- OpenWeatherMap Forecast API (ต้องใช้ API key) - สำหรับข้อมูลอนาคต (5 วันข้างหน้า)
+  
 
-**Features:**
-- ✅ ดึงข้อมูลรายวัน (daily data, ไม่ใช่ monthly averages)
-- ✅ รองรับทุกจังหวัดที่มีสนามบิน (31 จังหวัด)
-- ✅ เลือกช่วงเวลาได้ (start-date/end-date)
-- ✅ Cache ข้อมูลเพื่อหลีกเลี่ยง duplicates
-- ✅ บันทึกเป็น CSV อัตโนมัติ
-- ✅ Unified format สำหรับทั้ง 2 APIs
+**1\. Fetch Flight Data (Google SERP API)**
 
-**Usage:**
+We retrieve raw flight data from **Google Flights** via **SerpAPI**.
 
-```bash
-cd backend
+-   SerpAPI acts as a wrapper around Google Search results.
+-   Flight search results (prices, airlines, routes, dates, etc.) are fetched programmatically.
+-   The raw response is typically returned in **JSON format**.
 
-# Fetch ข้อมูลสำหรับทุกจังหวัด (default date range)
-npm run fetch:daily-weather
-
-# Fetch จังหวัดที่เลือก
-npm run fetch:daily-weather -- --provinces="bangkok,chiang-mai,phuket"
-
-# Fetch ช่วงวันที่กำหนด
-npm run fetch:daily-weather -- --start-date=2020-01-01 --end-date=2025-12-31
-
-# ระบุไฟล์ CSV output
-npm run fetch:daily-weather -- --csv="./data/daily_weather.csv"
-```
-
-**Parameters:**
-- `--all-provinces`: ดึงข้อมูลทุกจังหวัด (default: true)
-- `--provinces="..."`: ระบุจังหวัดเฉพาะ (comma-separated)
-- `--start-date=YYYY-MM-DD`: วันที่เริ่มต้น (default: 2020-01-01)
-- `--end-date=YYYY-MM-DD`: วันที่สิ้นสุด (default: current date + 5 days)
-- `--csv="path"`: ระบุไฟล์ CSV สำหรับ output
-
-**Output:**
-- CSV File: `data/daily_weather_data.csv` (default) หรือตามที่ระบุ
-- Format: Daily weather data (raw data, ไม่มี weather score)
+This step is responsible **only for data collection**, not transformation or storage.
 
-**Example:**
-```bash
-# ดึงข้อมูล 5 ปีย้อนหลัง
-npm run fetch:daily-weather -- --start-date=2020-01-01 --end-date=2025-12-31
+  
 
-# Output:
-# ✅ Fetched daily weather data for 31 provinces
-# ✅ Data range: 2020-01-01 to 2025-12-31
-# ✅ Saved to: data/daily_weather_data.csv
-```
+**2\. Convert Flight Data to CSV**
 
-**Notes:**
-- Open-Meteo Archive API รองรับข้อมูลอดีต (2020-01-01 ถึง 2026-01-06)
-- OpenWeatherMap Forecast API รองรับข้อมูลอนาคต (5 วันข้างหน้า)
-- ข้อมูลเป็น daily data (ไม่ใช่ monthly averages)
-- ต้อง import เข้า database แยกด้วย `npm run import:daily-weather`
+After fetching the flight data:
 
----
+-   The raw JSON response is parsed.
+-   Relevant flight fields (e.g., origin, destination, price, airline, dates, class, etc.) are extracted.
+-   The cleaned and structured data is converted into a **CSV file**.
 
-### 2. fetch-holidays-to-csv.ts
+Why CSV?
 
-**Purpose:** ดึงข้อมูลวันหยุดนักขัตฤกษ์ไทยจาก iApp Holiday API
+-   Easy to inspect manually
+-   Easy to re-import or reprocess
+-   Decouples data fetching from database logic
 
-**Location:** `backend/src/scripts/fetch-holidays-to-csv.ts`
+At the end of this step, you should have a CSV file ready for import.
 
-**API Used:** iApp Holiday API (ฟรี, ไม่ต้องใช้ API key)
-- URL: https://api-ninjas.com/api/holidays (or similar)
-- GitHub: https://github.com/snoprod/iApp-Holiday-API
+  
 
-**Features:**
-- ✅ ดึงข้อมูลวันหยุดราชการไทย
-- ✅ รองรับหลายปี (2024-2026)
-- ✅ แยกประเภทวันหยุด (ราชการ, ธนาคาร)
-- ✅ บันทึกเป็น CSV
-- ✅ Import เข้า database ได้ทันที
+**3\. Import Flight Data into the Database**
 
-**Usage:**
+Once the CSV file is ready, we load it into the database using the following command:
 
-```bash
-cd backend
+  
 
-# Fetch วันหยุด 2024-2026
-npm run fetch:holidays
+npm run import:flights
 
-# Fetch และ import เข้า database
-npm run fetch:holidays -- --import
+This command:
 
-# Fetch ช่วงปีที่กำหนด
-npm run fetch:holidays -- --start-year=2024 --end-year=2026
+-   Reads the generated CSV file
+-   Validates and normalizes the data
+-   Inserts the records into the appropriate database tables
 
-# Import จาก CSV ที่มีอยู่
-npm run fetch:holidays -- --import --csv="./data/thai_holidays_2024_2026.csv"
-```
+This step ensures:
 
-**Parameters:**
-- `--start-year=YYYY`: ปีเริ่มต้น (default: 2024)
-- `--end-year=YYYY`: ปีสิ้นสุด (default: 2026)
-- `--import`: Import เข้า database ทันที
-- `--csv="path"`: ระบุไฟล์ CSV สำหรับ import
-
-**Output:**
-- CSV File: `data/thai_holidays_YYYY_YYYY_timestamp.csv`
-- Format:
-  ```csv
-  date,name,nameEn,type,isPublicHoliday,year,month,period
-  2024-01-01,วันขึ้นปีใหม่,New Year's Day,public,true,2024,1,2024-01
-  2024-04-13,วันสงกรานต์,Songkran Festival,public,true,2024,4,2024-04
-  ```
-
-**Example:**
-```bash
-# ดึงข้อมูลวันหยุด 3 ปี
-npm run fetch:holidays -- --start-year=2024 --end-year=2026 --import
-
-# Output:
-# ✅ Fetched holidays for years: 2024, 2025, 2026
-# ✅ Total holidays: 88 days
-# ✅ Public holidays: 42 days
-# ✅ Saved to: data/thai_holidays_2024_2026_20241231_120000.csv
-# ✅ Imported to database: 88 records
-```
-
-**Holiday Types:**
-- `public`: วันหยุดราชการ
-- `bank`: วันหยุดธนาคาร
-- `government`: วันหยุดเฉพาะหน่วยงานราชการ
-
-**Notes:**
-- ข้อมูลวันหยุดจะถูกใช้ในการคำนวณ season (Holiday factor = 20%)
-- Long weekends จะได้ holiday score สูงกว่า
-- ควร update ข้อมูลทุกปี เมื่อมีประกาศวันหยุดใหม่
-
----
-
-## 📥 Data Import Scripts
-
-Scripts สำหรับ import ข้อมูลจาก CSV เข้า database
-
-### 3. import-daily-weather-from-csv.ts
-
-**Purpose:** Import ข้อมูลสภาพอากาศรายวันจาก CSV เข้า database
-
-**Location:** `backend/src/scripts/import-daily-weather-from-csv.ts`
-
-**Target Table:** `daily_weather_data`
-
-**Features:**
-- ✅ Auto-detect ไฟล์ CSV ล่าสุดใน `data/` folder
-- ✅ Upsert (update หรือ insert)
-- ✅ Progress tracking
-- ✅ Error handling
-- ✅ Skip existing records (optional)
-
-**Usage:**
-
-```bash
-cd backend
-
-# Auto-detect ไฟล์ล่าสุด
-npm run import:daily-weather
-
-# ระบุไฟล์เอง
-npm run import:daily-weather -- --csv="./data/daily_weather_data.csv"
-
-# Skip existing records (faster)
-npm run import:daily-weather -- --csv="./data/daily_weather_data.csv" --skip-existing
-```
-
-**Parameters:**
-- `--csv="path"`: ระบุไฟล์ CSV (optional, จะหาล่าสุดเอง)
-- `--skip-existing`: ข้าม records ที่มีอยู่แล้ว (optional)
-
-**CSV Format Required:**
-```csv
-province,date,temperature,rainfall,humidity
-bangkok,2024-01-01,28.5,15.2,65.0
-chiang-mai,2024-01-01,22.3,5.8,58.0
-```
-
-**Example:**
-```bash
-npm run import:daily-weather
-
-# Output:
-# 📂 Auto-detected: ./data/daily_weather_data.csv
-# 📊 Total records: 68,289
-# ✅ Processing: 100%
-# ✅ Successfully imported: 68,289 records
-# ⏱️  Duration: 15.3s
-```
-
-**Notes:**
-- Script จะ skip records ที่มี error
-- ใช้ `UPSERT` operation (ON CONFLICT UPDATE)
-- ปลอดภัยสำหรับรัน multiple times
-- ใช้ `--skip-existing` เพื่อความเร็ว (ถ้าข้อมูลส่วนใหญ่มีอยู่แล้ว)
-
----
-
-## 🎲 Data Generation Scripts
-
-Scripts สำหรับสร้างข้อมูล mock/test data
-
-### 4. generate-mock-flights.ts
-
-**Purpose:** สร้างข้อมูลเที่ยวบิน mock สำหรับพัฒนาและทดสอบ
-
-**Location:** `backend/src/scripts/generate-mock-flights.ts`
-
-**Features:**
-- ✅ สร้างข้อมูล 31 routes (BKK → all provinces)
-- ✅ 6 สายการบิน (TG, FD, SL, VZ, PG, DD)
-- ✅ Seasonal price variation (High/Normal/Low)
-- ✅ One-way และ Round-trip
-- ✅ Batch insert (รวดเร็วมาก ~30s สำหรับ 130,000 flights)
-
-**Usage:**
-
-```bash
-cd backend
-
-# Generate 360 days (90 days back + 270 days forward)
-npm run generate:mock-flights -- --days-back=90 --days-forward=270
-
-# Generate 1 year
-npm run generate:mock-flights -- --days-back=180 --days-forward=180
-
-# Generate 30 days only (for testing)
-npm run generate:mock-flights -- --days-back=0 --days-forward=30
-```
-
-**Parameters:**
-- `--days-back=N`: จำนวนวันย้อนหลัง (default: 30)
-- `--days-forward=N`: จำนวนวันล่วงหน้า (default: 180)
-
-**Pricing Formula:**
-
-```typescript
-basePrice = 1000 + (distance_km × 0.15)
-
-seasonalMultiplier = {
-  High (Nov-Feb): 1.3-1.5x
-  Normal (Mar-Apr): 0.9-1.1x
-  Low (May-Oct): 0.7-0.9x
-}
-
-tripTypeMultiplier = {
-  One-way: 1.0x
-  Round-trip: 1.8x (with 10% discount)
-}
-
-finalPrice = basePrice × seasonalMultiplier × tripTypeMultiplier × randomVariation(±2%)
-```
-
-**Output Example:**
-```bash
-npm run generate:mock-flights -- --days-back=90 --days-forward=270
-
-# Output:
-# ======================================================================
-# ✈️  Mock Flight Data Generator
-# ======================================================================
-# 📅 Date Range: 2024-10-02 to 2025-09-28 (360 days)
-# 🛫 Origin: Bangkok (BKK) - Hub-based routing
-# 📍 Destinations: 31 provinces (all except Bangkok)
-# ✈️  Airlines: 6
-# ======================================================================
-# 
-# 📦 Setting up airlines...
-#   ✅ TG - Thai Airways
-#   ✅ FD - Thai AirAsia
-#   ✅ SL - Thai Lion Air
-#   ✅ VZ - Thai Vietjet Air
-#   ✅ PG - Bangkok Airways
-#   ✅ DD - Nok Air
-# 
-# 🛣️  Setting up routes (31 routes)...
-#   ✅ Created/updated 31 routes
-# 
-# ✈️  Generating flight prices for 31 routes...
-# 
-# ======================================================================
-# ✅ Generation completed!
-# ======================================================================
-#   📦 Airlines: 6
-#   🛣️  Routes: 31
-#   ✈️  Flights: 132,990
-#   ⏱️  Duration: 30.75s
-# ======================================================================
-```
-
-**Data Volume:**
-- 31 routes × 6 airlines × 360 days × 2 trip types = ~133,920 flights
-- Database size: ~50-100 MB
-
-**Notes:**
-- ใช้ batch insert (500 records/batch) เพื่อความเร็ว
-- Price มี seasonal variation สำหรับ season calculation
-- ควร clear ข้อมูลเก่าก่อน re-generate: `TRUNCATE TABLE flight_prices;`
+-   Consistent database structure
+-   Centralized storage for analysis and predictions
+-   No direct dependency on external APIs during analysis
 
 ---
 

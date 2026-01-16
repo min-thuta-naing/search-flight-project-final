@@ -13,6 +13,7 @@ import { pool } from '../config/database';
 
 const pricePredictionService = new PricePredictionService();
 
+
 /**
  * Service for analyzing flight prices and generating recommendations
  * This service implements the business logic for flight price analysis

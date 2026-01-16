@@ -88,8 +88,8 @@
 ┌───────────────────┴──────────────────────────────────────────┐
 │                  EXTERNAL APIS (Optional)                    │
 │                                                              │
-│  ┌──────────────┐  ┌──────────────┐     │
-│  │  Open-Meteo  │  │   iApp API   │     │
+│  ┌──────────────┐  ┌──────────────┐                          │
+│  │  Open-Meteo  │  │   iApp API   │                          │
 │  │  Weather API │  │  Holiday API │     │
 │  └──────────────┘  └──────────────┘     │
 │            ↓                   ↓         │
@@ -99,202 +99,262 @@
 
 ---
 
+
+
+
+
 ## 🧮 Calculation Formulas
 
-### 1. Mock Data Price Calculation
 
-**Location:** `backend/src/scripts/generate-mock-flights.ts`
+### 1. Database Price Calculation (Real Data)
 
-#### Base Price Calculation
 
-```typescript
-basePrice = 1000 + (distance_km * 0.15)
-```
+**Location:** `backend/src/scripts/generate-mock-flights.ts` (if using mock data)  
+**Location:** `backend/src/scripts/seed.ts` (if seeding real data)
 
-**Example:**
-- BKK → CNX: Distance = 600 km
-- Base Price = 1000 + (600 × 0.15) = 1090 THB
 
-#### Seasonal Price Multiplier
+#### Base Price with Seasonal Multipliers
+
 
 ```typescript
-function getSeasonalMultiplier(month: number): number {
-  // High season (Nov-Feb): 1.3-1.5x
-  if (month === 11 || month === 12 || month === 1 || month === 2) {
-    return 1.3 + Math.random() * 0.2; // 1.3-1.5x
-  }
-  
-  // Low season (May-Oct): 0.7-0.9x  
-  if (month >= 5 && month <= 10) {
-    return 0.7 + Math.random() * 0.2; // 0.7-0.9x
-  }
-  
-  // Normal season (Mar-Apr): 0.9-1.1x
-  return 0.9 + Math.random() * 0.2; // 0.9-1.1x
-}
-```
+// Real price calculation from database seeds
+price = basePrice × seasonMultiplier × holidayMultiplier × priceVariation
 
-#### Final Price Calculation
-
-```typescript
-price = basePrice × seasonalMultiplier × tripTypeMultiplier × travelClassMultiplier × randomVariation
 
 Where:
-- basePrice: 1000 + (distance_km × 0.15)
-- seasonalMultiplier: 0.7-1.5x (depends on month)
-- tripTypeMultiplier: 1.0 (one-way) or 1.8 (round-trip)
-- travelClassMultiplier: 1.0 (economy), 2.5 (business), 4.0 (first)
-- randomVariation: 0.98-1.02 (±2% for realism)
+- basePrice: Route-specific base price (from routes table)
+- seasonMultiplier: Based on month (high: 1.3-1.5x, normal: 1.0x, low: 0.7-0.9x)
+- holidayMultiplier: 1.1-1.3x for holiday periods
+- priceVariation: 0.98-1.02 (±2% for realism)
 ```
 
-**Example (High Season, One-way, Business Class):**
-```
-basePrice = 1090 THB
-seasonalMultiplier = 1.4 (high season)
-tripTypeMultiplier = 1.0 (one-way)
-travelClassMultiplier = 2.5 (business)
-randomVariation = 1.01
 
-finalPrice = 1090 × 1.4 × 1.0 × 2.5 × 1.01 = 3853 THB
+**Note:** For production, actual prices come from real flight data APIs and are stored in the `flight_prices` table.
+
+
+#### Travel Class Pricing
+
+
+```typescript
+// Applied when querying database
+queryPrice = basePrice × travelClassMultiplier
+
+
+Where travelClassMultiplier:
+- Economy: 1.0x
+- Business: 2.5x (typically 2.5× economy)
+- First Class: 4.0x (typically 4× economy)
 ```
+
+
+**Example Query:** When user selects Business class, database query filters by `travel_class = 'business'` and returns prices that already include the business class multiplier.
+
 
 ---
 
-### 2. Season Calculation (Multi-Factor Scoring)
+
+### 2. Season Calculation (Simplified - Using price_level)
+
 
 **Location:** `backend/src/services/flightAnalysisService.ts`
 
-#### Multi-Factor Score
+
+#### Direct Database-Driven Season Classification
+
 
 ```typescript
-seasonScore = (pricePercentile × 0.6) + 
-              (holidayScore × 0.3) + 
-              (weatherScore × 0.1)
+// OLD COMPLEX METHOD (DEPRECATED)
+seasonScore = (pricePercentile × 0.6) + (holidayScore × 0.3) + (weatherScore × 0.1)
 
-Where:
-- pricePercentile: 0-100 (lower price = lower percentile = low season)
-- holidayScore: 0-100 (more holidays = higher score = high season)
-- weatherScore: 0-100 (better weather = higher score = high season)
+
+// NEW SIMPLIFIED METHOD (CURRENT)
+season = price_level from flight_prices table
+
+
+Where price_level is:
+- 'low' → Low Season
+- 'typical' → Normal Season  
+- 'high' → High Season
 ```
 
-**Note:** Demand factor ถูกถอดออกแล้ว ใช้เฉพาะ Price (60%), Holiday (30%), และ Weather (10%)
 
-#### Price Percentile Calculation
+#### Season Data Generation
+
 
 ```typescript
-// Step 1: Calculate average price per month from database
-avgPricesByMonth[month] = AVG(prices in that month)
+// Seasons are determined by grouping flights by price_level
+lowSeasonFlights = filter flights where price_level = 'low'
+normalSeasonFlights = filter flights where price_level = 'typical'
+highSeasonFlights = filter flights where price_level = 'high'
 
-// Step 2: Calculate percentiles across all months
-sortedPrices = SORT(allAvgPrices)
-pricePercentile[month] = 
-  (count of prices ≤ avgPrice[month] / total prices) × 100
+
+// Months for each season are dynamically determined from flight dates
+season.months = unique months from flights in that price_level group
 ```
 
-#### Holiday Score Calculation
 
-```typescript
-holidayScore = (holidaysCount × 30) + (longWeekendsCount × 20)
+**Key Changes:**
+- ✅ **No complex calculations** - Uses pre-determined `price_level` from database
+- ✅ **No weather/holiday data** - Season purely based on price level
+- ✅ **Dynamic month assignment** - Months assigned based on actual flight data
+- ✅ **Simpler maintenance** - Just update `price_level` in database
 
-// Clamp to 0-100
-holidayScore = Math.min(100, holidayScore)
-```
-
-#### Weather Score Calculation
-
-```typescript
-score = 50 // base score
-
-// Temperature (20-28°C is optimal)
-if (temperature >= 20 && temperature <= 28) {
-  score += 20
-} else if (temperature < 20 || temperature > 32) {
-  score -= 20
-}
-
-// Rainfall (less is better)
-if (rainfall < 50) {
-  score += 15
-} else if (rainfall > 200) {
-  score -= 15
-}
-
-// Humidity (50-70% is optimal)
-if (humidity >= 50 && humidity <= 70) {
-  score += 15
-} else if (humidity > 80) {
-  score -= 15
-}
-
-weatherScore = clamp(score, 0, 100)
-```
-
-#### Season Classification
-
-```typescript
-// Calculate percentiles of final season scores
-p33 = 33rd percentile of seasonScores
-p67 = 67th percentile of seasonScores
-
-// Classify months
-if (seasonScore < p33) → Low Season
-if (seasonScore >= p33 && seasonScore < p67) → Normal Season
-if (seasonScore >= p67) → High Season
-```
 
 ---
 
-### 3. Price Prediction
+
+### 3. Price Prediction (XGBoost Machine Learning)
+
 
 **Location:** `backend/src/services/pricePredictionService.ts`
 
-#### Simple Moving Average (7-day window)
+
+#### XGBoost Model Training
+
 
 ```typescript
-predictedPrice = AVG(prices from 7 days before target date)
+// Features for price prediction
+features = [
+  'day_of_month',      // 1-31
+  'day_of_week',       // 0-6 (Monday-Sunday)
+  'month',             // 1-12
+  'days_until_flight', // How far in advance
+  'route_base_price',  // Base price from routes table
+  'historical_avg',    // 30-day average price
+  'price_level',       // low/typical/high
+  'is_weekend',        // 0 or 1
+  'is_holiday'         // 0 or 1
+]
 
-// If insufficient historical data, use current average
-if (historicalPrices.length < 7) {
-  predictedPrice = AVG(all available prices for that route)
+
+// Model predicts price based on historical patterns
+predictedPrice = xgboost.predict(features)
+```
+
+
+#### Price Trend Analysis
+
+
+```typescript
+// 30-day trend calculation
+priceTrend = {
+  direction: 'up' | 'down' | 'stable',
+  percentage: currentAvgPrice / previousAvgPrice,
+  change: currentAvgPrice - previousAvgPrice
 }
 ```
 
+
 ---
 
-### 4. Distance Calculation (Haversine Formula)
 
-**Location:** `backend/src/scripts/generate-mock-flights.ts`
+### 4. Passenger Price Calculation
+
+
+**Location:** `backend/src/services/flightAnalysisService.ts`
+
+
+#### Discount Application
+
 
 ```typescript
-// Haversine formula to calculate great-circle distance
-R = 6371 // Earth's radius in km
+totalPrice = (adultPrice × adults) + (childPrice × children × 0.75) + (infantPrice × infants × 0.1)
 
-φ1 = lat1 × π/180
-φ2 = lat2 × π/180
-Δφ = (lat2 - lat1) × π/180
-Δλ = (lon2 - lon1) × π/180
 
-a = sin²(Δφ/2) + cos(φ1) × cos(φ2) × sin²(Δλ/2)
-c = 2 × atan2(√a, √(1−a))
-
-distance = R × c
+Where:
+- adults: Full price
+- children: 25% discount (pay 75%)
+- infants: 90% discount (pay 10%)
 ```
 
----
 
-### 5. Flight Duration Estimation
+#### Trip Type Adjustment
+
 
 ```typescript
+// For one-way trips (compared to round-trip in database)
+oneWayPrice = roundTripPrice × 0.5
+```
+
+
+---
+
+
+### 5. Best Deal Recommendation
+
+
+**Location:** `backend/src/services/flightAnalysisService.ts`
+
+
+#### Best Price with Duration Range
+
+
+```typescript
+// For round-trip: Finds cheapest combination within duration range
+for duration in [minDuration...maxDuration]:
+  departurePrice = priceForDate(departureDate)
+  returnPrice = priceForDate(departureDate + duration)
+  totalPrice = departurePrice + returnPrice
+  
+  if totalPrice < bestPrice:
+    bestPrice = totalPrice
+    bestDuration = duration
+```
+
+
+#### Season-Based Recommendation
+
+
+```typescript
+// System always recommends the best deal across all seasons
+bestDeal = seasons.find(season => season.bestDeal.price is minimum)
+
+
+// If user selects a date, calculate savings
+savings = userSelectedDatePrice - bestDealPrice
+```
+
+
+---
+
+
+### 6. Flight Duration Estimation
+
+
+```typescript
+// Actual duration from database (real flight data)
+duration = arrival_time - departure_time
+
+
+// For mock data generation:
 duration_minutes = (distance_km / 800) × 60 + 30
+
 
 Where:
 - 800 km/h: Average cruising speed
 - +30 minutes: Taxi, takeoff, landing buffer
 ```
 
-**Example:**
-- Distance: 600 km
-- Duration = (600 / 800) × 60 + 30 = 75 minutes
+
+---
+
+
+## 📊 Data Flow Summary
+
+
+1. **Real Prices** → From APIs to `flight_prices` table with `price_level`
+2. **Season Calculation** → Direct mapping: `price_level` → Season Type
+3. **Price Prediction** → XGBoost model using historical patterns
+4. **Recommendation** → Find cheapest flight considering duration range
+5. **Final Price** → Apply passenger discounts and trip type multipliers
+
+
+## 🔄 Migration Notes
+
+
+**Before:** Complex season calculation with 60% price + 30% holiday + 10% weather  
+**After:** Simple lookup of `price_level` column from database
+
 
 ---
 

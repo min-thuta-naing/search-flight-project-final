@@ -269,86 +269,12 @@ Frontend จะรันที่: **http://localhost:3000**
 
 ## 📥 Data Import
 
-### 1. Import Daily Weather Data
+### flight data import from csv file to database 
 
 ```bash
-cd backend
-
-# Auto-detect latest CSV file
-npm run import:daily-weather
-
-# Or specify file
-npm run import:daily-weather -- --csv="./data/daily_weather_data.csv"
-```
-
-**Expected output:**
-```
-✅ Import completed!
-📊 Total records: 68,289
-✅ Successfully stored: 68,289
-```
-
-### 2. Import Holiday Data
-
-```bash
-cd backend
-
-# Fetch holidays from API
-npm run fetch:holidays -- --start-year=2024 --end-year=2026
-
-# Import holidays from CSV
-npm run import:holidays
-
-# Or specify CSV file
-npm run import:holidays -- --csv="./data/thai_holidays_2024_2026_20251229_163536.csv"
-```
-
-ตรวจสอบข้อมูล:
-
-```sql
-SELECT COUNT(*) FROM thai_holidays;
--- Should return: 88 records (2024-2026)
-```
-
----
-
-## 🎲 Mock Data Generation
-
-### Generate Flight Prices
-
-```bash
-cd backend
-npm run generate:mock-flights -- --days-back=90 --days-forward=270
-```
-
-**Parameters:**
-- `--days-back`: จำนวนวันย้อนหลัง (default: 30)
-- `--days-forward`: จำนวนวันล่วงหน้า (default: 180)
-
-**Expected output:**
-```
-✅ Generation completed!
-📦 Airlines: 6
-🛣️  Routes: 31 (BKK to all provinces)
-✈️  Flights: 132,990
-⏱️  Duration: ~30-40s
-```
-
-### Verify Generated Data
-
-```sql
--- Check flight prices count
-SELECT COUNT(*) FROM flight_prices;
--- Should see: 132,990
-
--- Check routes
-SELECT origin, destination, COUNT(*) as flights
-FROM routes r
-JOIN flight_prices fp ON r.id = fp.route_id
-GROUP BY r.id, origin, destination
-ORDER BY origin, destination;
-```
-
+   cd backend 
+   npm run import:flights
+   ```
 ---
 
 ## 🔄 Development Workflow

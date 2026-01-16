@@ -341,28 +341,17 @@ npm run lint             # Run ESLint
 
 ## 🎯 Key Formulas
 
-### Mock Price Calculation
+### Season Calculation
 ```
-price = basePrice × seasonalMultiplier × tripTypeMultiplier × randomVariation
-
-basePrice = 1000 + (distance_km × 0.15)
-seasonalMultiplier = 0.7-1.5x (depends on month)
-tripTypeMultiplier = 1.0 (one-way) or 1.8 (round-trip)
-randomVariation = 0.98-1.02 (±2%)
+price_level (low) --> low season 
+price_level (typical) --> normal season
+price_level (high) --> high season
 ```
-
-### Season Score
+### Pricing Rule Classification
 ```
-seasonScore = (pricePercentile × 0.6) + 
-              (holidayScore × 0.3) + 
-              (weatherScore × 0.1)
-```
-
-### Season Classification
-```
-seasonScore < p33 → Low Season (🟢)
-p33 ≤ seasonScore < p67 → Normal Season (🔵)
-seasonScore ≥ p67 → High Season (🔴)
+Adult flight price --> full price  
+children (2-11 year-old) flight price --> full price * 0.75  
+infant flight price --> full pirce * 0.1
 ```
 
 ---
