@@ -252,13 +252,13 @@ export class FlightAnalysisService {
         acc[level] = (acc[level] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
-      console.log(`Uuuuuuuuuuuu[FlightAnalysis] Flight prices by price_level:`, priceLevelCounts);
+      console.log(`[FlightAnalysis] Flight prices by price_level:`, priceLevelCounts);
 
       // Also check if we have valid price_level values
       const validPriceLevels = flightPrices.filter(fp => 
         fp.price_level && ['low', 'typical', 'high'].includes(fp.price_level)
       ).length;
-      console.log(`Uuuuuuuiiiiiii[FlightAnalysis] Flights with valid price_level: ${validPriceLevels}/${flightPrices.length}`);
+      console.log(`[FlightAnalysis] Flights with valid price_level: ${validPriceLevels}/${flightPrices.length}`);
 
 
 
